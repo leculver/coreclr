@@ -1,4 +1,4 @@
-##
+﻿##
 ## Licensed to the .NET Foundation under one or more agreements.
 ## The .NET Foundation licenses this file to you under the MIT license.
 ## See the LICENSE file in the project root for more information.
@@ -259,9 +259,7 @@ def generateLttngTpProvider(providerName,eventNodes,allTemplates):
         templateName = eventNode.getAttribute('template')
         vars_to_be_freed = [] #vars representing the allocation we make
         #generate EventXplatEnabled
-        lTTngImpl.append("extern \"C\" BOOL  EventXplatEnabled")
-        lTTngImpl.append(eventName)
-        lTTngImpl.append("(){ return TRUE;}\n")
+        lTTngImpl.append("extern \"C\" BOOL  EventXplatEnabled%s(){ return tracepoint_enabled(%s, %s); }\n" % (eventName, providerName, eventName))
         #generate FireEtw functions
         fnptype = []
         linefnptype = []
@@ -299,7 +297,7 @@ def generateLttngTpProvider(providerName,eventNodes,allTemplates):
 #start of fn body
         lTTngImpl.append("    if (!EventXplatEnabled")
         lTTngImpl.append(eventName)
-        lTTngImpl.append("()){ return ERROR_SUCCESS;}\n")
+        lTTngImpl.append("()){ return ERROR_SUCCESS; }\n")
 
         linefnbody = []
         if templateName:
@@ -329,7 +327,7 @@ def generateLttngTpProvider(providerName,eventNodes,allTemplates):
 
                 subevent   = subtemplate
                 subevent   = subevent.replace(templateName,'')
-                linefnbody.append("\n     tracepoint(\n")
+                linefnbody.append("\n     do_tracepoint(\n")
                 linefnbody.append("        " + providerName + ",\n")
                 linefnbody.append("        " + eventName + subevent)
                 linefnbody.append(",\n")
@@ -379,7 +377,7 @@ def generateLttngTpProvider(providerName,eventNodes,allTemplates):
                 linefnbody.append("\n        );\n")
 
         else:
-            linefnbody.append("\n     tracepoint(\n")
+            linefnbody.append("\n     do_tracepoint(\n")
             linefnbody.append("        "+providerName + ",\n")
             linefnbody.append("        "+eventName)
             linefnbody.append("\n     );\n")
@@ -540,7 +538,6 @@ def generateLttngFiles(etwmanifest,eventprovider_directory):
 
         lTTngImpl.write("""
 #define TRACEPOINT_DEFINE
-#define TRACEPOINT_PROBE_DYNAMIC_LINKAGE
 
 #include "stdlib.h"
 #include "pal_mstypes.h"
@@ -551,6 +548,13 @@ def generateLttngFiles(etwmanifest,eventprovider_directory):
 #include "pal/stackstring.hpp"
 """)
         lTTngImpl.write("#include \"" + lttngevntheadershortname + "\"\n\n")
+
+        lTTngImpl.write("""#ifndef tracepoint_enabled
+#define tracepoint_enabled(provider, name) TRUE
+#define do_tracepoint tracepoint
+#endif
+
+""")
 
         templateNodes = providerNode.getElementsByTagName('template')
         eventNodes = providerNode.getElementsByTagName('event')
