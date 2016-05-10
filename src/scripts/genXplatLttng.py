@@ -644,6 +644,7 @@ bool WriteToBuffer(const char *str, char *&buffer, int& offset, int& size, bool 
 
         lTTngImpl.write("""
 #define TRACEPOINT_DEFINE
+#define TRACEPOINT_PROBE_DYNAMIC_LINKAGE
 
 #include "stdlib.h"
 #include "pal_mstypes.h"
