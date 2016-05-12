@@ -65,13 +65,61 @@ palDataTypeMapping ={
 # The AbstractTemplate contains FunctionSignature
 # FunctionSignature consist of FunctionParameter representing each parameter in it's signature
 
+def getParamSequenceSize(paramSequence, estimate):
+    total = 0
+    pointers = 0
+    for param in paramSequence:
+        if param == "win:Int64":
+            total += 8
+        elif param == "win:ULong":
+            total += 4
+        elif param == "GUID":
+            total += 16
+        elif param == "win:Double":
+            total += 8
+        elif param == "win:Int32":
+            total += 4
+        elif param == "win:Boolean":
+            total += 4
+        elif param == "win:UInt64":
+            total += 8
+        elif param == "win:UInt32":
+            total += 4
+        elif param == "win:UInt16":
+            total += 2
+        elif param == "win:UInt8":
+            total += 1
+        elif param == "win:Pointer":
+            if estimate:
+                total += 8
+            else:
+                pointers += 1
+        elif param == "win:Binary":
+            total += 1
+        elif estimate:
+            if param == "win:AnsiString":
+                total += 32
+            elif param == "win:UnicodeString":
+                total += 64
+            elif param == "win:Struct":
+                total += 32
+        else:
+            raise Exception("Don't know size for " + param)
+
+    if estimate:
+        return total
+
+    return total, pointers
+
+
 class Template:
     def __repr__(self):
         return "<Template " + self.name + ">"
 
-    def __init__(self, templateName, fnPrototypes, dependencies):
+    def __init__(self, templateName, fnPrototypes, dependencies, structSizes):
         self.name = templateName
         self.signature = FunctionSignature()
+        self.structs = structSizes
 
         for variable in fnPrototypes.paramlist:
             for dependency in dependencies[variable]:
@@ -87,41 +135,8 @@ class Template:
 
     @property
     def estimated_size(self):
-        total = 0
-        for paramName in self.signature.paramlist:
-            param = self.getFnParam(paramName)
+        total = getParamSequenceSize((self.getFnParam(paramName).winType for paramName in self.signature.paramlist), True)
 
-            if param.winType == "win:Int64":
-                total += 8
-            elif param.winType == "win:ULong":
-                total += 4
-            elif param.winType == "win:Struct":
-                total += 32
-            elif param.winType == "GUID":
-                total += 16
-            elif param.winType == "win:AnsiString":
-                total += 32
-            elif param.winType == "win:UnicodeString":
-                total += 64
-            elif param.winType == "win:Double":
-                total += 8
-            elif param.winType == "win:Int32":
-                total += 4
-            elif param.winType == "win:Boolean":
-                total += 4
-            elif param.winType == "win:UInt64":
-                total += 8
-            elif param.winType == "win:UInt32":
-                total += 4
-            elif param.winType == "win:UInt16":
-                total += 2
-            elif param.winType == "win:UInt8":
-                total += 1
-            elif param.winType == "win:Pointer":
-                total += 8
-            elif param.winType == "win:Binary":
-                total += 1
-        
         if total < 32:
             total = 32
         elif total > 1024:
@@ -166,11 +181,11 @@ class FunctionParameter:
         else:
             self.count    = "win:null"
 
-def getTopLevelElementsByTagName(Node,tag):
 
-    dataNodes       = []
-    for element in Node.getElementsByTagName(tag):
-        if element.parentNode == Node:
+def getTopLevelElementsByTagName(node,tag):
+    dataNodes = []
+    for element in node.getElementsByTagName(tag):
+        if element.parentNode == node:
             dataNodes.append(element)
 
     return dataNodes
@@ -184,7 +199,7 @@ def parseTemplateNodes(templateNodes):
     allTemplates           = {}
 
     for templateNode in templateNodes:
-
+        structSizes = {}
         templateName    = templateNode.getAttribute('tid')
         var_Dependecies = {}
         fnPrototypes    = FunctionSignature()
@@ -199,8 +214,8 @@ def parseTemplateNodes(templateNodes):
                     raise ValueError('unknown attribute: '+ attrib_name + ' in template:'+ templateName)
 
         for dataNode in dataNodes:
-            variable    = dataNode.getAttribute('name')
-            wintype     = dataNode.getAttribute('inType')
+            variable = dataNode.getAttribute('name')
+            wintype = dataNode.getAttribute('inType')
 
             #count and length are the same
             wincount  = dataNode.getAttribute('count')
@@ -221,7 +236,7 @@ def parseTemplateNodes(templateNodes):
                     var_Props = wincount
                 elif  fnPrototypes.getParam(wincount):
                     var_Props = wincount
-                    var_dependency.insert(0,wincount)
+                    var_dependency.insert(0, wincount)
 
             #construct the function signature
 
@@ -234,30 +249,36 @@ def parseTemplateNodes(templateNodes):
 
         structNodes = getTopLevelElementsByTagName(templateNode,'struct')
 
-        count = 0;
         for structToBeMarshalled in structNodes:
-            struct_len     = "Arg"+ str(count) + "_Struct_Len_"
-            struct_pointer = "Arg"+ str(count) + "_Struct_Pointer_"
-            count += 1
-
-            #populate the Property- used in codegen
-            structname   = structToBeMarshalled.getAttribute('name')
+            structName   = structToBeMarshalled.getAttribute('name')
             countVarName = structToBeMarshalled.getAttribute('count')
 
+            assert(countVarName == "Count")
+            assert(countVarName in fnPrototypes.paramlist)
+            
+            names = [x.attributes['name'].value for x in structToBeMarshalled.getElementsByTagName("data")]
+            types = [x.attributes['inType'].value for x in structToBeMarshalled.getElementsByTagName("data")]
+            try:
+                structSize, pointers = getParamSequenceSize((x.attributes['inType'].value for x in structToBeMarshalled.getElementsByTagName("data")), False)
+                
+                if pointers > 0 and structSize > 0:
+                    sizeString = "(%s * (%s + sizeof(void *) + %d))" % (countVarName, hex(structSize), pointers)
+                elif structSize > 0:
+                    sizeString = "(%s * %s)" % (countVarName, hex(structSize))
+                else:
+                    sizeString = "(sizeof(void *) * %d)" % (pointers,)
+            except:
+                sizeString = countVarName
+
             if not countVarName:
-                raise ValueError('Struct '+ structname+ ' in template:'+ templateName + 'does not have an attribute count')
+                raise ValueError("Struct '%s' in template '%s' does not have an attribute count." % (structName, templateName))
 
-            var_Props                       = countVarName + "*" + struct_len + "/sizeof(int)"
-            var_Dependecies[struct_len]     = [struct_len]
-            var_Dependecies[struct_pointer] = [countVarName,struct_len,struct_pointer]
+            structSizes[structName] = sizeString
+            var_Dependecies[structName] = [countVarName, structName]
+            fnparam_pointer = FunctionParameter("win:Struct", structName, "win:count", sizeString)
+            fnPrototypes.append(structName, fnparam_pointer)
 
-            fnparam_len            = FunctionParameter("win:ULong",struct_len,"win:null",None)
-            fnparam_pointer        = FunctionParameter("win:Struct",struct_pointer,"win:count",var_Props)
-
-            fnPrototypes.append(struct_len,fnparam_len)
-            fnPrototypes.append(struct_pointer,fnparam_pointer)
-
-        allTemplates[templateName] = Template(templateName, fnPrototypes, var_Dependecies)
+        allTemplates[templateName] = Template(templateName, fnPrototypes, var_Dependecies, structSizes)
 
     return allTemplates
 
@@ -286,7 +307,8 @@ def generateClrallEvents(eventNodes,allTemplates):
         fnptypeline = []
 
         if templateName:
-            fnSig = allTemplates[templateName].signature
+            template = allTemplates[templateName]
+            fnSig = template.signature
 
             for params in fnSig.paramlist:
                 fnparam     = fnSig.getParam(params)
@@ -294,6 +316,11 @@ def generateClrallEvents(eventNodes,allTemplates):
                 typewName   = palDataTypeMapping[wintypeName]
                 winCount    = fnparam.count
                 countw      = palDataTypeMapping[winCount]
+                 
+                
+                if params in template.structs:
+                    fnptypeline.append("%sint %s_ElementSize,\n" % (lindent, params))
+
                 fnptypeline.append(lindent)
                 fnptypeline.append(typewName)
                 fnptypeline.append(countw)
@@ -304,6 +331,11 @@ def generateClrallEvents(eventNodes,allTemplates):
             #fnsignature
             for params in fnSig.paramlist:
                 fnparam     = fnSig.getParam(params)
+
+                if params in template.structs:                
+                    line.append(fnparam.name + "_ElementSize")
+                    line.append(", ")
+
                 line.append(fnparam.name)
                 line.append(",")
 
@@ -346,7 +378,8 @@ def generateClrXplatEvents(eventNodes, allTemplates):
         fnptype.append("(\n")
 
         if templateName:
-            fnSig = allTemplates[templateName].signature
+            template = allTemplates[templateName]
+            fnSig = template.signature
 
             for params in fnSig.paramlist:
                 fnparam     = fnSig.getParam(params)
@@ -354,6 +387,11 @@ def generateClrXplatEvents(eventNodes, allTemplates):
                 typewName   = palDataTypeMapping[wintypeName]
                 winCount    = fnparam.count
                 countw      = palDataTypeMapping[winCount]
+
+                
+                if params in template.structs:
+                    fnptypeline.append("%sint %s_ElementSize,\n" % (lindent, params))
+
                 fnptypeline.append(lindent)
                 fnptypeline.append(typewName)
                 fnptypeline.append(countw)
@@ -385,10 +423,16 @@ def generateclrEtwDummy(eventNodes,allTemplates):
         fnptype.append("(");
         line        = []
         if templateName:
-            fnSig = allTemplates[templateName].signature
+            template = allTemplates[templateName]
+            fnSig = template.signature
 
             for params in fnSig.paramlist:
                 fnparam     = fnSig.getParam(params)
+
+                if params in template.structs:
+                    line.append(fnparam.name + "_ElementSize")
+                    line.append(", ")
+
                 line.append(fnparam.name)
                 line.append(", ")
 

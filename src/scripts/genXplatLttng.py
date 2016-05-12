@@ -81,7 +81,7 @@ lttngDataTypeMapping ={
         "win:Int64"         :"const __int64",
         "win:ULong"         :"const ULONG",
         "win:count"         :"*",
-        "win:Struct"        :"const int",
+        "win:Struct"        :"const BYTE *",
         #actual spec
         "win:GUID"          :"const int",
         "win:AnsiString"    :"const char*",
@@ -362,7 +362,11 @@ def generateMethodBody(template, providerName, eventName):
         for paramName in fnSig.paramlist:
             parameter = fnSig.getParam(paramName)
 
-            pack_list.append("    success &= WriteToBuffer(%s, buffer, offset, size, fixedBuffer);" % (parameter.name,))
+            if paramName in template.structs:
+                size = paramName + "_ElementSize"
+                pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, (int)%s, buffer, offset, size, fixedBuffer);" % (parameter.name, size))
+            else:
+                pack_list.append("    success &= WriteToBuffer(%s, buffer, offset, size, fixedBuffer);" % (parameter.name,))
 
         code = "\n".join(pack_list) + "\n\n"
         tracepoint = """    if (!success)
@@ -385,7 +389,6 @@ def generateLttngTpProvider(providerName, eventNodes, allTemplates):
     for eventNode in eventNodes:
         eventName    = eventNode.getAttribute('symbol')
         templateName = eventNode.getAttribute('template')
-        vars_to_be_freed = [] #vars representing the allocation we make
         #generate EventXplatEnabled
         lTTngImpl.append("extern \"C\" BOOL  EventXplatEnabled%s(){ return tracepoint_enabled(%s, %s); }\n\n" % (eventName, providerName, eventName))
         #generate FireEtw functions
@@ -395,14 +398,23 @@ def generateLttngTpProvider(providerName, eventNodes, allTemplates):
         fnptype.append(eventName)
         fnptype.append("(\n")
 
+        
         if templateName:
-            fnSig   = allTemplates[templateName].signature
-            for params in fnSig.paramlist:
-                fnparam     = fnSig.getParam(params)
+            template = allTemplates[templateName]
+        else:
+            template = None
+
+        if template:
+            fnSig   = template.signature
+            for paramName in fnSig.paramlist:
+                fnparam     = fnSig.getParam(paramName)
                 wintypeName = fnparam.winType
                 typewName   = palDataTypeMapping[wintypeName]
                 winCount    = fnparam.count
                 countw      = palDataTypeMapping[winCount]
+
+                if paramName in template.structs:
+                    linefnptype.append("%sint %s_ElementSize,\n" % (lindent, paramName))
 
                 linefnptype.append(lindent)
                 linefnptype.append(typewName)
@@ -424,8 +436,8 @@ def generateLttngTpProvider(providerName, eventNodes, allTemplates):
         lTTngImpl.append("    if (!EventXplatEnabled%s())\n" % (eventName,))
         lTTngImpl.append("        return ERROR_SUCCESS;\n")
 
-        if templateName:
-            result = generateMethodBody(allTemplates[templateName], providerName, eventName)
+        if template:
+            result = generateMethodBody(template, providerName, eventName)
             lTTngImpl.append(result)
 
         lTTngImpl.append("\n    return ERROR_SUCCESS;\n}\n\n")
@@ -547,10 +559,7 @@ bool ResizeBuffer(char *&buffer, int& size, int currLen, int newSize, bool &fixe
     if (newSize < 32)
         newSize = 32;
 
-	char *newBuffer = new (std::nothrow) char[newSize];
-
-	if (newBuffer == nullptr)
-		return false;
+	char *newBuffer = new char[newSize];
 
 	memcpy(newBuffer, buffer, currLen);
 
@@ -561,6 +570,19 @@ bool ResizeBuffer(char *&buffer, int& size, int currLen, int newSize, bool &fixe
 	size = newSize;
 	fixedBuffer = false;
 
+	return true;
+}
+
+bool WriteToBuffer(const BYTE *src, int len, char *&buffer, int& offset, int& size, bool &fixedBuffer)
+{
+	if (offset + len)
+	{
+		if (!ResizeBuffer(buffer, size, offset, size + len, fixedBuffer))
+			return false;
+	}
+
+	memcpy(buffer + offset, src, len);
+	offset += len;
 	return true;
 }
 
@@ -665,6 +687,7 @@ bool WriteToBuffer(const char *str, char *&buffer, int& offset, int& size, bool 
 bool ResizeBuffer(char *&buffer, int& size, int currLen, int newSize, bool &fixedBuffer);
 bool WriteToBuffer(PCWSTR str, char *&buffer, int& offset, int& size, bool &fixedBuffer);
 bool WriteToBuffer(const char *str, char *&buffer, int& offset, int& size, bool &fixedBuffer);
+bool WriteToBuffer(const BYTE *src, int len, char *&buffer, int& offset, int& size, bool &fixedBuffer);
 
 template <typename T>
 bool WriteToBuffer(const T &value, char *&buffer, int& offset, int& size, bool &fixedBuffer)
