@@ -120,11 +120,18 @@ ctfDataTypeMapping ={
 
 MAX_LTTNG_ARGS = 9
 
+def shouldPackTemplate(template):
+    return template.num_params > MAX_LTTNG_ARGS or len(template.structs) > 0
+
 def generateArgList(template):
     header = "TP_ARGS( \\\n"
     footer = ")\n"
 
-    if template.num_params <= MAX_LTTNG_ARGS:
+    if shouldPackTemplate(template):
+        args  = "        const unsigned int, length, \\\n"
+        args += "        const char *, __data__ \\\n"
+
+    else:
         fnSig = template.signature
         args = []
         for params in fnSig.paramlist:
@@ -141,10 +148,6 @@ def generateArgList(template):
             args.append(arg)
         args = ", \\\n".join(args) + " \\\n"
 
-    else:
-        args  = "        const unsigned int, length, \\\n"
-        args += "        const char *, __data__ \\\n"
-
     return header + args + footer
 
 
@@ -152,7 +155,11 @@ def generateFieldList(template):
     header = "    " + " TP_FIELDS(\n"
     footer = "\n    )\n)\n"
     
-    if template.num_params <= MAX_LTTNG_ARGS:
+    if shouldPackTemplate(template):
+        field_list  = "        ctf_integer(ULONG, length, length)\n"
+        field_list += "        ctf_sequence(char, __data__, __data__, ULONG, length)"
+
+    else:
         fnSig = template.signature
         field_list = []
         for params in fnSig.paramlist:
@@ -189,10 +196,6 @@ def generateFieldList(template):
             field_list.append("        %s(%s)" % (ctf_type, field_body))
 
         field_list = "\n".join(field_list)
-
-    else:
-        field_list  = "        ctf_integer(ULONG, length, length)\n"
-        field_list += "        ctf_sequence(char, __data__, __data__, ULONG, length)"
 
     return header + field_list + footer
 
@@ -297,7 +300,7 @@ def generateMethodBody(template, providerName, eventName):
     #emit tracepoints
     fnSig   = template.signature
         
-    if template.num_params <= MAX_LTTNG_ARGS:
+    if not shouldPackTemplate(template):
         linefnbody = ["    do_tracepoint(%s,\n        %s" % (providerName, eventName)]
 
         for params in fnSig.paramlist:
@@ -363,7 +366,7 @@ def generateMethodBody(template, providerName, eventName):
             parameter = fnSig.getParam(paramName)
 
             if paramName in template.structs:
-                pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, ((int)%s * (int)%s), buffer, offset, size, fixedBuffer);" % (parameter.name, paramName, parameter.prop))
+                pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, (int)%s_ElementSize * (int)%s, buffer, offset, size, fixedBuffer);" % (paramName, paramName, parameter.prop))
             elif parameter.winType == "win:GUID":
                 pack_list.append("    success &= WriteToBuffer(*%s, buffer, offset, size, fixedBuffer);" % (parameter.name,))
             else:
