@@ -462,9 +462,13 @@ def generateClralltestEvents(sClrEtwAllMan):
 
             line =[]
             if templateName:
-                fnSig = allTemplates[templateName].signature
+                template = allTemplates[templateName]
+                fnSig = template.signature
 
                 for params in fnSig.paramlist:
+                    if params in template.structs:
+                        line.append("sizeof(Struct1),\n")
+
                     argline =''
                     fnparam     = fnSig.getParam(params)
                     if fnparam.name.lower() == 'count':
