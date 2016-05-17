@@ -199,7 +199,7 @@ def parseTemplateNodes(templateNodes):
     allTemplates           = {}
 
     for templateNode in templateNodes:
-        structSizes = {}
+        structCounts = {}
         templateName    = templateNode.getAttribute('tid')
         var_Dependecies = {}
         fnPrototypes    = FunctionSignature()
@@ -255,30 +255,18 @@ def parseTemplateNodes(templateNodes):
 
             assert(countVarName == "Count")
             assert(countVarName in fnPrototypes.paramlist)
+            if not countVarName:
+                raise ValueError("Struct '%s' in template '%s' does not have an attribute count." % (structName, templateName))
             
             names = [x.attributes['name'].value for x in structToBeMarshalled.getElementsByTagName("data")]
             types = [x.attributes['inType'].value for x in structToBeMarshalled.getElementsByTagName("data")]
-            try:
-                structSize, pointers = getParamSequenceSize((x.attributes['inType'].value for x in structToBeMarshalled.getElementsByTagName("data")), False)
-                
-                if pointers > 0 and structSize > 0:
-                    sizeString = "(%s * (%s + sizeof(void *) + %d))" % (countVarName, hex(structSize), pointers)
-                elif structSize > 0:
-                    sizeString = "(%s * %s)" % (countVarName, hex(structSize))
-                else:
-                    sizeString = "(sizeof(void *) * %d)" % (pointers,)
-            except:
-                sizeString = countVarName
 
-            if not countVarName:
-                raise ValueError("Struct '%s' in template '%s' does not have an attribute count." % (structName, templateName))
-
-            structSizes[structName] = sizeString
+            structCounts[structName] = countVarName
             var_Dependecies[structName] = [countVarName, structName]
-            fnparam_pointer = FunctionParameter("win:Struct", structName, "win:count", sizeString)
+            fnparam_pointer = FunctionParameter("win:Struct", structName, "win:count", countVarName)
             fnPrototypes.append(structName, fnparam_pointer)
 
-        allTemplates[templateName] = Template(templateName, fnPrototypes, var_Dependecies, structSizes)
+        allTemplates[templateName] = Template(templateName, fnPrototypes, var_Dependecies, structCounts)
 
     return allTemplates
 

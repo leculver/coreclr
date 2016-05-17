@@ -363,8 +363,9 @@ def generateMethodBody(template, providerName, eventName):
             parameter = fnSig.getParam(paramName)
 
             if paramName in template.structs:
-                size = paramName + "_ElementSize"
-                pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, (int)%s, buffer, offset, size, fixedBuffer);" % (parameter.name, size))
+                pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, ((int)%s * (int)%s), buffer, offset, size, fixedBuffer);" % (parameter.name, paramName, parameter.prop))
+            elif parameter.winType == "win:GUID":
+                pack_list.append("    success &= WriteToBuffer(*%s, buffer, offset, size, fixedBuffer);" % (parameter.name,))
             else:
                 pack_list.append("    success &= WriteToBuffer(%s, buffer, offset, size, fixedBuffer);" % (parameter.name,))
 
