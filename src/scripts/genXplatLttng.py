@@ -121,11 +121,14 @@ ctfDataTypeMapping ={
 MAX_LTTNG_ARGS = 9
 
 def shouldPackTemplate(template):
-    return template.num_params > MAX_LTTNG_ARGS or len(template.structs) > 0
+    return template.num_params > MAX_LTTNG_ARGS or len(template.structs) > 0 or len(template.arrays) > 0
 
 def generateArgList(template):
     header = "TP_ARGS( \\\n"
     footer = ")\n"
+
+    if "MethodILToNative" in template.name:
+        pass
 
     if shouldPackTemplate(template):
         args  = "        const unsigned int, length, \\\n"
@@ -367,6 +370,8 @@ def generateMethodBody(template, providerName, eventName):
 
             if paramName in template.structs:
                 pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, (int)%s_ElementSize * (int)%s, buffer, offset, size, fixedBuffer);" % (paramName, paramName, parameter.prop))
+            elif paramName in template.arrays:
+                pack_list.append("    success &= WriteToBuffer((const BYTE *)%s, sizeof(%s) * (int)%s, buffer, offset, size, fixedBuffer);" % (paramName, lttngDataTypeMapping[parameter.winType], parameter.prop))
             elif parameter.winType == "win:GUID":
                 pack_list.append("    success &= WriteToBuffer(*%s, buffer, offset, size, fixedBuffer);" % (parameter.name,))
             else:

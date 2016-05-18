@@ -116,10 +116,11 @@ class Template:
     def __repr__(self):
         return "<Template " + self.name + ">"
 
-    def __init__(self, templateName, fnPrototypes, dependencies, structSizes):
+    def __init__(self, templateName, fnPrototypes, dependencies, structSizes, arrays):
         self.name = templateName
         self.signature = FunctionSignature()
         self.structs = structSizes
+        self.arrays = arrays
 
         for variable in fnPrototypes.paramlist:
             for dependency in dependencies[variable]:
@@ -200,6 +201,7 @@ def parseTemplateNodes(templateNodes):
 
     for templateNode in templateNodes:
         structCounts = {}
+        arrays = {}
         templateName    = templateNode.getAttribute('tid')
         var_Dependecies = {}
         fnPrototypes    = FunctionSignature()
@@ -237,6 +239,7 @@ def parseTemplateNodes(templateNodes):
                 elif  fnPrototypes.getParam(wincount):
                     var_Props = wincount
                     var_dependency.insert(0, wincount)
+                    arrays[variable] = wincount
 
             #construct the function signature
 
@@ -266,7 +269,7 @@ def parseTemplateNodes(templateNodes):
             fnparam_pointer = FunctionParameter("win:Struct", structName, "win:count", countVarName)
             fnPrototypes.append(structName, fnparam_pointer)
 
-        allTemplates[templateName] = Template(templateName, fnPrototypes, var_Dependecies, structCounts)
+        allTemplates[templateName] = Template(templateName, fnPrototypes, var_Dependecies, structCounts, arrays)
 
     return allTemplates
 
