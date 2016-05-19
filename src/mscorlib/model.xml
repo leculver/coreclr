@@ -951,7 +951,6 @@
       <Member Name="LoadFromStream(System.IO.Stream)" />
       <Member Name="LoadFromStream(System.IO.Stream,System.IO.Stream)" />
       <Member Name="Resolve(System.IntPtr,System.Reflection.AssemblyName)" />
-      <Member Name="ResolveUsingResolvingEvent(System.IntPtr,System.Reflection.AssemblyName)" />
       <Member Name="ResolveUnmanagedDll(System.String,System.IntPtr)" />
       <Member Name="LoadUnmanagedDll(System.String)" />
       <Member Name="LoadUnmanagedDllFromPath(System.String)" />
@@ -6010,7 +6009,7 @@
       <Member Name="ZeroFreeCoTaskMemAnsi(System.IntPtr)" />
       <Member Name="ZeroFreeGlobalAllocAnsi(System.IntPtr)" />
       <Member Name="ZeroFreeGlobalAllocUnicode(System.IntPtr)" />
-      <Member Name="ZeroFreeMemoryUTF8(System.IntPtr)" />
+      <Member Name="ZeroFreeCoTaskMemUTF8(System.IntPtr)" />
     </Type>
     <Type Name="System.Runtime.InteropServices.MarshalAsAttribute">
       <Member MemberType="Field" Name="ArraySubType" />
@@ -10390,6 +10389,8 @@
       <Member Status="ImplRoot" Name="GetDelegateContinuationsForDebugger" />
       <Member Status="ImplRoot" Name="GetActiveTaskFromId(System.Int32)" />
       <Member Status="ImplRoot" Name="GetActiveTasks" />
+      <Member Status="ImplRoot" Name="get_ParentForDebugger" />
+      <Member Status="ImplRoot" Name="get_StateFlagsForDebugger" />
     </Type>
     <Type Status="ImplRoot" Name="System.Threading.Tasks.SystemThreadingTasks_TaskDebugView">
       <Member Status="ImplRoot" Name="#ctor(System.Threading.Tasks.Task)" />
