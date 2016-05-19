@@ -1700,7 +1700,6 @@ void BulkTypeValue::Clear()
 //
 //
 
-#if !defined(FEATURE_PAL)
 void BulkTypeEventLogger::FireBulkTypeEvent()
 {
     LIMITED_METHOD_CONTRACT;
@@ -1711,6 +1710,7 @@ void BulkTypeEventLogger::FireBulkTypeEvent()
         return;
     }
 
+#if !defined(FEATURE_PAL)
     // Normally, we'd use the MC-generated FireEtwBulkType for all this gunk, but
     // it's insufficient as the bulk type event is too complex (arrays of structs of
     // varying size). So we directly log the event via EventDataDescCreate and
@@ -1783,18 +1783,54 @@ void BulkTypeEventLogger::FireBulkTypeEvent()
     }
 
     Win32EventWrite(Microsoft_Windows_DotNETRuntimeHandle, &BulkType, iDesc, EventData);
+    
+#else
 
+    UINT iSize = 0;
+
+    for (int iTypeData = 0; iTypeData < m_nBulkTypeValueCount; iTypeData++)
+    {
+        // Do fixed-size data as one bulk copy
+        memcpy(
+                m_BulkTypeEventBuffer + iSize,
+                &(m_rgBulkTypeValues[iTypeData].fixedSizedData),
+                sizeof(m_rgBulkTypeValues[iTypeData].fixedSizedData));
+        iSize += sizeof(m_rgBulkTypeValues[iTypeData].fixedSizedData);
+
+        // Do var-sized data individually per field
+
+        LPCWSTR wszName = m_rgBulkTypeValues[iTypeData].sName.GetUnicode();
+        UINT nameSize = sizeof(WCHAR);
+        
+        if (wszName == NULL)
+            wszName = W("");
+         else            
+            nameSize = (m_rgBulkTypeValues[iTypeData].sName.GetCount() + 1) * sizeof(WCHAR);
+            
+        memcpy(m_BulkTypeEventBuffer + iSize, wszName, nameSize);
+        iSize += nameSize;
+
+        // Type parameter count
+        m_rgBulkTypeValues[iTypeData].cTypeParameters = m_rgBulkTypeValues[iTypeData].rgTypeParameters.GetCount();
+        memcpy(m_BulkTypeEventBuffer + iSize, &(m_rgBulkTypeValues[iTypeData].cTypeParameters), sizeof(m_rgBulkTypeValues[iTypeData].cTypeParameters));
+        iSize += sizeof(m_rgBulkTypeValues[iTypeData].cTypeParameters);
+
+        // Type parameter array
+        if (m_rgBulkTypeValues[iTypeData].cTypeParameters > 0)
+        {
+            memcpy(m_BulkTypeEventBuffer + iSize, m_rgBulkTypeValues[iTypeData].rgTypeParameters.GetElements(), sizeof(ULONGLONG) * m_rgBulkTypeValues[iTypeData].cTypeParameters);
+            iSize += sizeof(ULONGLONG) * m_rgBulkTypeValues[iTypeData].cTypeParameters;
+        }
+    }
+
+    FireEtwBulkType(m_nBulkTypeValueCount, GetClrInstanceId(), iSize, m_BulkTypeEventBuffer);
+
+#endif
     // Reset state
     m_nBulkTypeValueCount = 0;
     m_nBulkTypeValueByteCount = 0;
 }
 
-#else
-void BulkTypeEventLogger::FireBulkTypeEvent()
-{
-// UNIXTODO: "Eventing Not Implemented"
-}
-#endif //!defined(FEATURE_PAL)
 #ifndef FEATURE_REDHAWK
 
 //---------------------------------------------------------------------------------------
@@ -4225,7 +4261,6 @@ Return Value:
 
 --*/
 
-#if !defined(FEATURE_PAL)
 void InitializeEventTracing()
 {
     CONTRACTL
@@ -4242,6 +4277,7 @@ void InitializeEventTracing()
     if (FAILED(hr))
         return;
 
+#if !defined(FEATURE_PAL)
     // Register CLR providers with the OS
     if (g_pEtwTracer == NULL)
     {
@@ -4249,6 +4285,7 @@ void InitializeEventTracing()
         if (tempEtwTracer != NULL && tempEtwTracer->Register () == ERROR_SUCCESS)
             g_pEtwTracer = tempEtwTracer.Extract ();
     }
+#endif
 
     g_nClrInstanceId = GetRuntimeId() & 0x0000FFFF; // This will give us duplicate ClrInstanceId after UINT16_MAX
 
@@ -4256,6 +4293,8 @@ void InitializeEventTracing()
     // providers can do so now
     ETW::TypeSystemLog::PostRegistrationInit();
 }
+
+#if !defined(FEATURE_PAL)
 HRESULT ETW::CEtwTracer::Register()
 {
     WRAPPER_NO_CONTRACT;
@@ -4413,9 +4452,9 @@ extern "C"
         PMCGEN_TRACE_CONTEXT context = (PMCGEN_TRACE_CONTEXT)CallbackContext;
 
         BOOLEAN bIsPublicTraceHandle = (context->RegistrationHandle==Microsoft_Windows_DotNETRuntimeHandle);
-        
+
         BOOLEAN bIsPrivateTraceHandle = (context->RegistrationHandle==Microsoft_Windows_DotNETRuntimePrivateHandle);
-        
+
         BOOLEAN bIsRundownTraceHandle = (context->RegistrationHandle==Microsoft_Windows_DotNETRuntimeRundownHandle);
 
 
@@ -4502,13 +4541,9 @@ extern "C"
 
     }
 }
-#else
-
-void InitializeEventTracing(){}
-
-#endif // !defined(FEATURE_PAL)
 #endif // FEATURE_REDHAWK
 
+#endif // FEATURE_PAL
 #ifndef FEATURE_REDHAWK
 
 /****************************************************************************/
@@ -5013,6 +5048,7 @@ VOID ETW::InfoLog::RuntimeInformation(INT32 type)
 
 VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
 {
+#if  !defined(FEATURE_PAL) //UNIXTODO: Enable EmitCodeSymbols
     CONTRACTL {
         NOTHROW;
         GC_NOTRIGGER;
@@ -5042,15 +5078,14 @@ VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
                     // estmate. 
                     static const DWORD maxDataSize = 63000;
 
-                    DWORD quot = length / maxDataSize;
-                    
+                    ldiv_t qr = ldiv(length, maxDataSize);
+
                     // We do not allow pdbs of size greater than 2GB for now, 
                     // so totalChunks should fit in 16 bits.
-                    if (quot < UINT16_MAX)
+                    if (qr.quot < UINT16_MAX)
                     {
                         // If there are trailing bits in the last chunk, then increment totalChunks by 1
-                        DWORD rem = length % maxDataSize;
-                        UINT16 totalChunks = (UINT16)(quot + ((rem != 0) ? 1 : 0));
+                        UINT16 totalChunks = (UINT16)(qr.quot + ((qr.rem != 0) ? 1 : 0));
                         NewArrayHolder<BYTE> chunk(new BYTE[maxDataSize]);
                         DWORD offset = 0;
                         for (UINT16 chunkNum = 0; offset < length; chunkNum++)
@@ -5071,6 +5106,7 @@ VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
             }
         }
     } EX_CATCH{} EX_END_CATCH(SwallowAllExceptions);
+#endif//  !defined(FEATURE_PAL)
 }
 
 /* Returns the length of an in-memory symbol stream
