@@ -4770,18 +4770,18 @@ void ExecutionManager::AddRangeHelper(TADDR          pStartRange,
         {
             m_CodeRangeList = pnewrange;
         }
+    
+        current = m_CodeRangeList;
+        
+        printf("Coderange add");
+        while (current != NULL)
+        {
+            printf(", %p [%p %p]", current, current->LowAddress, current->HighAddress);
+            current = current->pnext;
+        }
+        
+        printf("\n");
     }
-    
-    current = m_CodeRangeList;
-    
-    printf("Coderange add");
-    while (current != NULL)
-    {
-        printf(", %p [%p %p]", current, current->LowAddress, current->HighAddress);
-        current = current->pnext;
-    }
-    
-    printf("\n");
 }
 
 // Deletes a single range starting at pStartRange
