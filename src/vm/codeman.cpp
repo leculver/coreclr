@@ -6,6 +6,7 @@
 
 //
 
+#include <stdio.h>
 #include "common.h"
 #include "jitinterface.h"
 #include "corjit.h"
@@ -4770,6 +4771,17 @@ void ExecutionManager::AddRangeHelper(TADDR          pStartRange,
             m_CodeRangeList = pnewrange;
         }
     }
+    
+    current = m_CodeRangeList;
+    
+    printf("Coderange add");
+    while (current != NULL)
+    {
+        printf(", %p [%p %p]", current, current->LowAddress, current->HighAddress);
+        current = current->pnext;
+    }
+    
+    printf("\n");
 }
 
 // Deletes a single range starting at pStartRange
@@ -4801,6 +4813,7 @@ void ExecutionManager::DeleteRange(TADDR pStartRange)
         // pCurr points at the Range that needs to be unlinked from the RangeList
         if (pCurr != NULL)
         {
+            printf("Coderange remove: %p [%p %p]\n", pCurr, pCurr->LowAddress, pCurr->HighAddress);
 
             // If pPrev is NULL the the head of this list is to be deleted
             if (pPrev == NULL)
